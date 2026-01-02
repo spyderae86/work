@@ -539,6 +539,28 @@ begin
 					hlock_clr = (tfrc_dst_int_ro_b | tfrc_src_int_ro_b) || clr_lock_error;
 end
 
+// Corner case : Dst is flow controller and pre-fetching enabled ( fcmode = 0). Src
+// is requesting and gets granted on same cycle as dma_last asserted on the
+// destination side. Already enough data in the channel FIFO to complete
+// the block to the destination. The previous tfr_req pulse is cancelled.
+// can goto amba_m is pulsed one cycle after tfr_req. For DMS != SMS and a single
+// block transfer then tfrc_src_int_ro_b is 2
+// cycles : 1st cycle before tfr_req and 2nd cycle on same cycle as tfr_req.
+// hlock_clr follows this. However this new tfr_req re-asserts hlock and this
+// needs to be cleared again. i.e. Since the tfr_req is been cancelled
+// so also does then locking. The "tfrc_src_int_ro_b_reg" in
+// ((lock_ch_l_int != 2'b00) || tfrc_src_int_ro_b_reg) && !same_layer_m_int))
+// detects this.
+
+assign hlock_clr_on_can_dfc = can_goto_amba_m && tfrc_src_int_ro_b_reg && lock_b_m_reg &&
+                             (lock_b_l_m_reg == 2'b00) && (!same_layer_m_int);
+
+/**********************************************************************/
+
+// Generation of clr signals to arbiter to clear request masking
+// during channel locking.
+
+
 // Lock ch1 int must be higher of lock_ch1 and lock_b1 if
 // bus locking is enabled.
 // If bus locking is enabled at a Layer and then bus locking
@@ -558,7 +580,7 @@ end
 
 always @(lock_ch_l_m_reg)
 begin
-    lock_ch_int_comb = lock_ch_1_m;
+    lock_ch_int_comb = lock_ch_l_m;
 end
 
 assign lock_ch_l_int_comb = lock_ch_l_m[1];
